@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>醒宅家 - 管理后台</title>
+    <style>
+        :root { --main: #4f46e5; --sidebar: #111827; --bg: #f3f4f6; --danger: #ef4444; }
+        body { font-family: system-ui; margin: 0; display: flex; height: 100vh; background: var(--bg); color: #1f2937; }
+        .sidebar { width: 220px; background: var(--sidebar); color: white; padding: 20px; overflow-y: auto; }
+        .content { flex: 1; padding: 30px; overflow-y: auto; }
+        .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .nav-item { padding: 12px; cursor: pointer; border-radius: 8px; margin-bottom: 5px; font-weight: 500; transition: 0.2s; }
+        .nav-item:hover { background: #374151; }
+        .nav-active { background: var(--main) !important; }
+        .sub-menu { margin-left: 15px; border-left: 2px solid #374151; padding-left: 5px; margin-bottom: 10px; }
+        .sub-item { padding: 8px 12px; font-size: 13px; color: #9ca3af; cursor: pointer; border-radius: 6px; }
+        .sub-item:hover { color: white; background: #1f2937; }
+        .sub-active { color: white; background: #374151; font-weight: bold; }
+        .btn { background: var(--main); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
+        .btn-del { background: #fee2e2; color: var(--danger); padding: 5px 10px; font-size: 12px; width: auto; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f3f4f6; }
+        .log-line { font-family: monospace; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #eee; display: flex; }
+        .log-time { color: #6b7280; width: 150px; flex-shrink: 0; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2 id="brand" style="text-align:center">醒宅家</h2>
+        <div class="nav-item nav-active" id="n-add" onclick="tab('add')">🍎 资产录入</div>
+        <div class="sub-menu" id="sub-add"></div>
+        <div class="nav-item" id="n-list" onclick="tab('list')">📋 资产列表</div>
+        <div class="nav-item" id="n-set" onclick="tab('set')">⚙️ 系统设置</div>
+        <div class="nav-item" id="n-logs" onclick="tab('logs')">📜 系统日志</div>
+    </div>
+    <div class="content">
+        <div id="v-add" class="card">
+            <h3 id="add-title">新资产录入</h3>
+            <div style="display:flex; gap:10px">
+                <select id="cat"></select>
+                <button class="btn" style="width:100px; background:#10b981" onclick="addNewCategory()">+新系列</button>
+            </div>
+            <input id="name" placeholder="名称"><input type="date" id="pDate"><input type="number" id="life" placeholder="保质期 (天)">
+            <button class="btn" onclick="save()">保存</button>
+        </div>
+        <div id="v-list" style="display:none" class="card"><h3>列表</h3><div id="items"></div></div>
+        <div id="v-set" style="display:none" class="card">
+            <h3>设置</h3>
+            <label>名称</label><input id="new-n"><label>时间</label><input type="time" id="new-t"><label>预警天数</label><input type="number" id="new-w">
+            <button class="btn" onclick="upConfig()">保存</button>
+            <button class="btn" style="background:#10b981; margin-top:10px" onclick="testNotify()">测试通知</button>
+        </div>
+        <div id="v-logs" style="display:none" class="card"><h3>实时日志</h3><div id="log-content"></div></div>
+    </div>
+    <script>
+        let config = {};
+        async function init() {
+            const r = await fetch('/api/config'); config = await r.json();
+            document.getElementById('brand').innerText = config.appName;
+            document.getElementById('new-n').value = config.appName;
+            document.getElementById('new-t').value = config.notifyTime;
+            document.getElementById('new-w').value = config.warningDays;
+            document.getElementById('cat').innerHTML = config.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+            document.getElementById('sub-add').innerHTML = config.categories.map(c => `<div class="sub-item" onclick="jumpToAdd('${c}')">└ ${c}</div>`).join('');
+        }
+        function jumpToAdd(c) { tab('add'); document.getElementById('cat').value = c; document.getElementById('add-title').innerText = `正在录入 [${c}]`; }
+        async function addNewCategory() {
+            const n = prompt("输入新系列名称:");
+            if(n && !config.categories.includes(n)) {
+                await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({categories:[...config.categories, n]})});
+                await init(); alert("添加成功");
+            }
+        }
+        function tab(t) {
+            ['add','list','set','logs'].forEach(i => { document.getElementById('v-'+i).style.display = 'none'; document.getElementById('n-'+i).classList.toggle('nav-active', i===t); });
+            document.getElementById('v-'+t).style.display = 'block';
+            document.getElementById('sub-add').style.display = (t==='add') ? 'block' : 'none';
+            if(t==='list') loadList(); if(t==='logs') loadLogs();
+        }
+        async function loadList() {
+            const r = await fetch('/api/tasks'); const {data} = await r.json();
+            document.getElementById('items').innerHTML = data.map(i => `<div class="item-row"><div><b>[${i.category}] ${i.name}</b><br><small>到期: ${i.expiryDate}</small></div><button class="btn btn-del" onclick="delItem('${i.id}')">删除</button></div>`).join('');
+        }
+        async function loadLogs() {
+            const r = await fetch('/api/logs'); const d = await r.json();
+            document.getElementById('log-content').innerHTML = d.map(l => `<div class="log-line"><div class="log-time">${l.time}</div><div>${l.msg}</div></div>`).join('');
+        }
+        async function save() {
+            const b = {category:document.getElementById('cat').value, name:document.getElementById('name').value, produceDate:document.getElementById('pDate').value, shelfLife:document.getElementById('life').value};
+            await fetch('/api/assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); alert("已保存"); tab('list');
+        }
+        async function delItem(id) { if(confirm("删除吗？")){ await fetch(`/api/assets/${id}`,{method:'DELETE'}); loadList(); } }
+        async function upConfig() {
+            const b = {appName:document.getElementById('new-n').value, notifyTime:document.getElementById('new-t').value, warningDays:document.getElementById('new-w').value};
+            await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); location.reload();
+        }
+        async function testNotify() { await fetch('/api/test-notify',{method:'POST'}); alert("已下发，请查看日志"); }
+        init();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+</body>
+</html>
