@@ -1,21 +1,20 @@
 #!/bin/bash
-# 醒宅家一键安装脚本 (Root 优化版)
+# 醒宅家一键安装脚本 (heibai082 专用版)
 
 echo "正在安装运行环境..."
 apt update
 apt install -y curl git
 
-# 安装 Node.js 18
+# 1. 安装 Node.js 18 (Debian 版)
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 apt install -y nodejs
 
-# 进入主目录
+# 2. 清理并进入目录
 cd ~
-# 如果已经存在旧文件夹就删掉重来
 rm -rf smart-reminder
 
 echo "正在拉取代码..."
-# 这里我已经帮你改好了用户名
+# 这里已经帮你替换好了真实的用户名
 git clone https://github.com/heibai082/smart-reminder.git
 cd smart-reminder
 
@@ -39,7 +38,7 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-# 启动程序
+# 3. 启动程序
 systemctl daemon-reload
 systemctl enable smart-reminder
 systemctl start smart-reminder
